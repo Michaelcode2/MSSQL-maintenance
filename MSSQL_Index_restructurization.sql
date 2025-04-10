@@ -2,7 +2,7 @@
 -- This script will identify tables with indexes and rebuild/reorganize them based on fragmentation level
 
 -- Set the target database
-USE Servio;
+USE MYDATABASE;
 
 -- Set nocount on to reduce output messages
 SET NOCOUNT ON;

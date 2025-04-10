@@ -3,22 +3,25 @@
 -- with options for full scan or sampling based on table size
 
 -- Set the target database
-USE KUPDIK;
+USE MYDATABASE;
 
 -- Set nocount on to reduce output messages
 SET NOCOUNT ON;
+
+-- Disable NULL warnings
+SET ANSI_WARNINGS OFF;
 
 -- Create a temporary table to store table information
 IF OBJECT_ID('tempdb..#TableStats') IS NOT NULL
     DROP TABLE #TableStats;
 
 CREATE TABLE #TableStats (
-    SchemaName NVARCHAR(128),
-    TableName NVARCHAR(128),
-    TableRowCount BIGINT,
-    HasLOBColumns BIT,
-    LastStatsUpdate DATETIME,
-    StatisticsUpdateType NVARCHAR(20)
+    SchemaName NVARCHAR(128) NOT NULL,
+    TableName NVARCHAR(128) NOT NULL,
+    TableRowCount BIGINT NOT NULL,
+    HasLOBColumns BIT NOT NULL,
+    LastStatsUpdate DATETIME NULL,
+    StatisticsUpdateType NVARCHAR(20) NULL
 );
 
 -- Create a temporary table to store statistics information
@@ -26,9 +29,9 @@ IF OBJECT_ID('tempdb..#StatsInfo') IS NOT NULL
     DROP TABLE #StatsInfo;
 
 CREATE TABLE #StatsInfo (
-    TableID INT,
-    StatsID INT,
-    LastUpdated DATETIME
+    TableID INT NOT NULL,
+    StatsID INT NOT NULL,
+    LastUpdated DATETIME NULL
 );
 
 -- Variables for processing
@@ -62,7 +65,7 @@ INSERT INTO #TableStats (SchemaName, TableName, TableRowCount, HasLOBColumns, La
 SELECT 
     s.name AS SchemaName,
     t.name AS TableName,
-    ISNULL(SUM(p.rows), 0) AS TableRowCount,
+    ISNULL(SUM(ISNULL(p.rows, 0)), 0) AS TableRowCount,
     CASE WHEN EXISTS (
         SELECT 1 
         FROM sys.columns c
@@ -79,8 +82,8 @@ SELECT
 FROM 
     sys.tables t
     JOIN sys.schemas s ON t.schema_id = s.schema_id
-    JOIN sys.indexes i ON t.object_id = i.object_id
-    JOIN sys.partitions p ON i.object_id = p.object_id AND i.index_id = p.index_id
+    LEFT JOIN sys.indexes i ON t.object_id = i.object_id
+    LEFT JOIN sys.partitions p ON i.object_id = p.object_id AND i.index_id = p.index_id
 WHERE 
     t.is_ms_shipped = 0 -- Skip system tables
     AND t.type = 'U' -- User tables only
@@ -102,7 +105,10 @@ SELECT
     SchemaName,
     TableName,
     TableRowCount,
-    CONVERT(VARCHAR(20), LastStatsUpdate, 120) AS LastStatsUpdate,
+    CASE 
+        WHEN LastStatsUpdate IS NULL THEN 'Never' 
+        ELSE CONVERT(VARCHAR(20), LastStatsUpdate, 120) 
+    END AS LastStatsUpdate,
     StatisticsUpdateType
 FROM 
     #TableStats
@@ -116,7 +122,7 @@ SELECT
     SchemaName,
     TableName,
     TableRowCount,
-    StatisticsUpdateType
+    ISNULL(StatisticsUpdateType, 'FULLSCAN') -- Default to FULLSCAN if NULL
 FROM 
     #TableStats
 ORDER BY 
@@ -157,6 +163,9 @@ CLOSE TableCursor;
 DEALLOCATE TableCursor;
 DROP TABLE #TableStats;
 DROP TABLE #StatsInfo;
+
+-- Re-enable NULL warnings if needed
+SET ANSI_WARNINGS ON;
 
 -- Print script completion info
 PRINT '-- Statistics maintenance completed';
